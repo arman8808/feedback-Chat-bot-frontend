@@ -43,7 +43,6 @@ export const signupUser = createAsyncThunk(
 
 export const logoutUser = () => (dispatch) => {
   authService.logout();
-  dispatch(authSlice.actions.logout());
 };
 
 const authSlice = createSlice({
