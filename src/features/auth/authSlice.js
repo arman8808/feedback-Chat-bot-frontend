@@ -1,24 +1,33 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import authService from "../../services/authService";
-import Cookies from "js-cookie";
 
-const token = Cookies.get("token");
-
-const initialState = {
-  user: null,
-  token: token || null,
-  isAuthenticated: !!token,
-  isLoading: false,
-  error: null,
+// Helper function to get initial auth state
+const getInitialAuthState = () => {
+  const token = localStorage.getItem("token");
+  return {
+    user: null,
+    token: token || null,
+    isAuthenticated: !!token,
+    isLoading: false,
+    error: null,
+  };
 };
 
 export const loginUser = createAsyncThunk(
   "auth/login",
   async (credentials, thunkAPI) => {
     try {
-      const data = await authService.login(credentials);
-
-      return data;
+      const response = await authService.login(credentials);
+      
+      // Store token in localStorage (for now)
+      if (response.token) {
+        localStorage.setItem("token", response.token);
+      }
+      
+      return {
+        user: response.user,
+        token: response.token
+      };
     } catch (err) {
       return thunkAPI.rejectWithValue(
         err.response?.data?.message || "Login failed"
@@ -31,8 +40,17 @@ export const signupUser = createAsyncThunk(
   "auth/signup",
   async (userData, thunkAPI) => {
     try {
-      const data = await authService.register(userData);
-      return data;
+      const response = await authService.register(userData);
+      
+      // Store token in localStorage (for now)
+      if (response.token) {
+        localStorage.setItem("token", response.token);
+      }
+      
+      return {
+        user: response.user,
+        token: response.token
+      };
     } catch (err) {
       return thunkAPI.rejectWithValue(
         err.response?.data?.message || "Signup failed"
@@ -41,22 +59,34 @@ export const signupUser = createAsyncThunk(
   }
 );
 
-export const logoutUser = () => (dispatch) => {
-  authService.logout();
-};
+export const logoutUser = createAsyncThunk(
+  "auth/logout",
+  async (_, thunkAPI) => {
+    try {
+      await authService.logout();
+    } catch (err) {
+      console.error("Logout error:", err);
+      // Even if backend logout fails, we'll still clear frontend state
+    }
+  }
+);
 
 const authSlice = createSlice({
   name: "auth",
-  initialState,
+  initialState: getInitialAuthState(),
   reducers: {
-    logout: (state) => {
+    // Synchronous logout action
+    clearAuthState: (state) => {
       localStorage.removeItem("token");
+      state.user = null;
       state.token = null;
       state.isAuthenticated = false;
+      state.error = null;
     },
   },
   extraReducers: (builder) => {
     builder
+      // Login cases
       .addCase(loginUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -72,6 +102,7 @@ const authSlice = createSlice({
         state.error = action.payload;
       })
 
+      // Signup cases
       .addCase(signupUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -85,9 +116,17 @@ const authSlice = createSlice({
       .addCase(signupUser.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
+      })
+
+      // Logout case
+      .addCase(logoutUser.fulfilled, (state) => {
+        localStorage.removeItem("token");
+        state.user = null;
+        state.token = null;
+        state.isAuthenticated = false;
       });
   },
 });
 
-export const { logout } = authSlice.actions;
+export const { clearAuthState } = authSlice.actions;
 export default authSlice.reducer;

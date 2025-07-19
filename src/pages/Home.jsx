@@ -10,7 +10,9 @@ export default function Home() {
   const [showChat, setShowChat] = useState(false);
   const navigate = useNavigate();
   const handleLogout = () => {
-    dispatch(logoutUser());
+    dispatch(logoutUser()).then(() => {
+      window.location.href = "/login";
+    });
   };
 
   return (
@@ -19,7 +21,7 @@ export default function Home() {
         <h2 className="text-xl">Welcome, {user?.name}</h2>
         <button
           onClick={() => {
-            handleLogout(), navigate("/login");
+            handleLogout();
           }}
           className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
         >
