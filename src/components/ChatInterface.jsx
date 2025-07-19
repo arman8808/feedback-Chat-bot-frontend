@@ -31,7 +31,7 @@ const ChatInterface = ({ userId }) => {
   useEffect(() => {
     setSocketStatus("connecting");
 
-    socketRef.current = io("http://localhost:8000", {
+    socketRef.current = io("https://feedback-chat-bot-backend.vercel.app", {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       auth: { token },
