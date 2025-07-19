@@ -1,16 +1,17 @@
-import { useDispatch, useSelector } from 'react-redux';
-import { logout } from '../features/auth/authSlice';
-import { useState } from 'react';
-import ChatInterface from '../components/ChatInterface';
-
+import { useDispatch, useSelector } from "react-redux";
+import { logout } from "../features/auth/authSlice";
+import { useState } from "react";
+import ChatInterface from "../components/ChatInterface";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
   const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
   const [showChat, setShowChat] = useState(false);
-
+ const navigate = useNavigate();
   const handleLogout = () => {
     dispatch(logout());
+    navigate("/login");
   };
 
   return (
