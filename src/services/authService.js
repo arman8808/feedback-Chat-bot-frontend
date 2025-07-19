@@ -1,12 +1,15 @@
+// authService.js
 import api from './api';
 
 const authService = {
   login: async (credentials) => {
     try {
-      const response = await api.post('/users/login', credentials, {
-        withCredentials: true,
-      });
-      return response.data; 
+      const response = await api.post('/users/login', credentials);
+   
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+      }
+      return response.data;
     } catch (error) {
       throw error;
     }
@@ -14,22 +17,20 @@ const authService = {
 
   register: async (userData) => {
     try {
-      const response = await api.post('/users/register', userData, {
-        withCredentials: true, 
-      });
-      return response.data; 
+      const response = await api.post('/users/register', userData);
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+      }
+      return response.data;
     } catch (error) {
       throw error;
     }
   },
 
-  logout: async () => {
-    try {
-      await api.post('/users/logout', {}, { withCredentials: true }); 
-    } catch (error) {
-      throw error;
-    }
-  },
+  logout: () => {
+    localStorage.removeItem('token');
+
+  }
 };
 
 export default authService;
