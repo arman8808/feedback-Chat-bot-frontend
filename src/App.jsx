@@ -1,36 +1,48 @@
-// src/App.jsx
+// App.js
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Cookies from "js-cookie";
+import { useEffect, useState } from "react";
+
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Home from "./pages/Home";
 
 export default function App() {
-  const token = localStorage.getItem("token");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    setIsAuthenticated(!!token);
+
+    const handleStorageChange = () => {
+      const token = localStorage.getItem("token");
+      setIsAuthenticated(!!token);
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Protected Home */}
         <Route
           path="/"
-          element={token ? <Home /> : <Navigate replace to="/login" />}
+          element={
+            isAuthenticated ? <Home /> : <Navigate to="/login" replace />
+          }
         />
-
-        {/* Login & Signup */}
         <Route
           path="/login"
-          element={!token ? <Login /> : <Navigate to="/" replace />}
+          element={
+            !isAuthenticated ? (
+              <Login setIsAuthenticated={setIsAuthenticated} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
         />
         <Route
           path="/register"
-          element={!token ? <Signup /> : <Navigate to="/" replace />}
-        />
-
-        {/* Catch‑all: redirect unknown to home or login */}
-        <Route
-          path="*"
-          element={<Navigate to={token ? "/" : "/login"} replace />}
+          element={!isAuthenticated ? <Signup /> : <Navigate to="/" replace />}
         />
       </Routes>
     </BrowserRouter>

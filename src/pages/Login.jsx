@@ -9,7 +9,7 @@ import CryptoJS from "crypto-js";
 const SECRET =
   import.meta.env.VITE_REMEMBER_SECRET || "d343ewewbvvghc2r32WSWERSDwger";
 
-export default function Login() {
+export default function Login({ setIsAuthenticated }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { loading, error, isAuthenticated } = useSelector((s) => s.auth);
@@ -19,7 +19,6 @@ export default function Login() {
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false); // New state for password visibility
 
-  // On mount: load remembered creds
   useEffect(() => {
     const enc = Cookies.get("remember");
     if (enc) {
@@ -37,26 +36,21 @@ export default function Login() {
     }
   }, []);
 
-  // If login success, go home
   useEffect(() => {
     if (isAuthenticated) navigate("/");
   }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault(); // This should be the first line
-
+    e.preventDefault();
     try {
-      await dispatch(loginUser({ email, password })).unwrap();
+      const response = await dispatch(loginUser({ email, password })).unwrap();
 
-      if (remember) {
-        const data = JSON.stringify({ email, password });
-        const enc = CryptoJS.AES.encrypt(data, SECRET).toString();
-        Cookies.set("remember", enc, { expires: 30 });
-      } else {
-        Cookies.remove("remember");
-      }
+      localStorage.setItem("token", response.token);
+
+      setIsAuthenticated(true);
+
+      navigate("/");
     } catch (error) {
-      // Error is already handled by Redux
       console.error("Login failed:", error);
     }
   };
