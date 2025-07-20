@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from "react-redux";
-import { logout, logoutUser } from "../features/auth/authSlice";
+import {  logoutUser } from "../features/auth/authSlice";
 import { useState } from "react";
 import ChatInterface from "../components/ChatInterface";
 import { useNavigate } from "react-router-dom";

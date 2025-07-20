@@ -31,7 +31,7 @@ const ChatInterface = ({ userId }) => {
   useEffect(() => {
     setSocketStatus("connecting");
 
-    socketRef.current = io("https://feedback-chat-bot-backend.vercel.app", {
+    socketRef.current = io( import.meta.env.VITE_API_Base_URL, {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       auth: { token },
