@@ -12,12 +12,12 @@ const SECRET =
 export default function Login({ setIsAuthenticated }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading, error, isAuthenticated } = useSelector((s) => s.auth);
-
+  const { error, isAuthenticated } = useSelector((s) => s.auth);
+  const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // New state for password visibility
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     const enc = Cookies.get("remember");
@@ -42,6 +42,7 @@ export default function Login({ setIsAuthenticated }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
     try {
       const response = await dispatch(loginUser({ email, password })).unwrap();
 
@@ -52,6 +53,8 @@ export default function Login({ setIsAuthenticated }) {
       navigate("/");
     } catch (error) {
       console.error("Login failed:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -185,10 +188,10 @@ export default function Login({ setIsAuthenticated }) {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition flex justify-center items-center"
             >
-              {loading ? (
+              {isLoading ? (
                 <>
                   <svg
                     className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"

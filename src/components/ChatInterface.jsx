@@ -14,24 +14,37 @@ const ChatInterface = ({ userId }) => {
   const [chatEnded, setChatEnded] = useState(false);
   const [sessionReport, setSessionReport] = useState(null);
   const [showExperienceRating, setShowExperienceRating] = useState(false);
+  const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
+  const [showThankYouMessage, setShowThankYouMessage] = useState(false);
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const token = localStorage.getItem("token");
 
   const startNewSession = () => {
+    if (socketRef.current && !socketRef.current.connected) {
+      socketRef.current.connect();
+    }
+
     setChatEnded(false);
     setCurrentQuestion(null);
     setMessages([]);
     setSessionReport(null);
     setShowExperienceRating(false);
-    socketRef.current.emit("start-session");
+    setShowFeedbackInput(false);
+    setShowIssueReport(false);
+    setIsLoadingNextQuestion(false);
+
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("start-session");
+    }
   };
 
   useEffect(() => {
     setSocketStatus("connecting");
 
-    socketRef.current = io( import.meta.env.VITE_API_Base_URL, {
+    socketRef.current = io(import.meta.env.VITE_API_Base_URL, {
+      reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       auth: { token },
@@ -47,42 +60,48 @@ const ChatInterface = ({ userId }) => {
       setSocketStatus("disconnected");
     });
 
+    socketRef.current.on("reconnect", () => {
+      setSocketStatus("connected");
+      startNewSession();
+    });
+
+    socketRef.current.on("reconnect_attempt", () => {
+      setSocketStatus("reconnecting");
+    });
+
+    socketRef.current.on("reconnect_error", () => {
+      setSocketStatus("disconnected");
+    });
+
+    socketRef.current.on("reconnect_failed", () => {
+      setSocketStatus("disconnected");
+    });
+
     // Session events
     socketRef.current.on("session-ended", ({ message }) => {
-      setMessages((prev) => [
-        ...prev,
-        { type: "bot", text: message },
-      ]);
+      setMessages((prev) => [...prev, { type: "bot", text: message }]);
       setChatEnded(true);
       setShowExperienceRating(false);
-      socketRef.current.disconnect();
     });
 
     socketRef.current.on("session-interrupted", ({ message }) => {
-      setMessages((prev) => [
-        ...prev,
-        { type: "system", text: message },
-      ]);
+      setMessages((prev) => [...prev, { type: "system", text: message }]);
       setChatEnded(true);
     });
 
     // Question handling
     socketRef.current.on("first-question", (question) => {
       setCurrentQuestion(question);
-      setMessages((prev) => [
-        ...prev,
-        { type: "bot", text: question.text },
-      ]);
+      setMessages((prev) => [...prev, { type: "bot", text: question.text }]);
+      setIsLoadingNextQuestion(false);
     });
 
     socketRef.current.on("next-question", (question) => {
       if (question) {
         setCurrentQuestion(question);
-        setMessages((prev) => [
-          ...prev,
-          { type: "bot", text: question.text },
-        ]);
+        setMessages((prev) => [...prev, { type: "bot", text: question.text }]);
       }
+      setIsLoadingNextQuestion(false);
     });
 
     socketRef.current.on("session-summary", (report) => {
@@ -95,13 +114,11 @@ const ChatInterface = ({ userId }) => {
           text: "Thank you for answering all questions! How would you rate your overall experience with this chat?",
         },
       ]);
+      setIsLoadingNextQuestion(false);
     });
 
     socketRef.current.on("thank-you", ({ message }) => {
-      setMessages((prev) => [
-        ...prev,
-        { type: "bot", text: message },
-      ]);
+      setMessages((prev) => [...prev, { type: "bot", text: message }]);
       setShowExperienceRating(false);
     });
 
@@ -121,11 +138,30 @@ const ChatInterface = ({ userId }) => {
         ...prev,
         { type: "system", text: `Error: ${error.message}` },
       ]);
+      setIsLoadingNextQuestion(false);
     });
 
     return () => {
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        socketRef.current.off("connect");
+        socketRef.current.off("disconnect");
+        socketRef.current.off("reconnect");
+        socketRef.current.off("reconnect_attempt");
+        socketRef.current.off("reconnect_error");
+        socketRef.current.off("reconnect_failed");
+        socketRef.current.off("session-ended");
+        socketRef.current.off("session-interrupted");
+        socketRef.current.off("first-question");
+        socketRef.current.off("next-question");
+        socketRef.current.off("session-summary");
+        socketRef.current.off("thank-you");
+        socketRef.current.off("request-feedback");
+        socketRef.current.off("appreciation");
+        socketRef.current.off("error");
+
+        if (socketRef.current.connected) {
+          socketRef.current.disconnect();
+        }
       }
     };
   }, [userId]);
@@ -135,6 +171,7 @@ const ChatInterface = ({ userId }) => {
   }, [messages]);
 
   const handleRating = (rating) => {
+    setIsLoadingNextQuestion(true);
     setMessages((prev) => [
       ...prev,
       {
@@ -152,6 +189,7 @@ const ChatInterface = ({ userId }) => {
 
   const handleFeedbackSubmit = () => {
     if (feedback.trim()) {
+      setIsLoadingNextQuestion(true);
       setMessages((prev) => [
         ...prev,
         { type: "user", text: `Feedback: ${feedback.trim()}` },
@@ -173,7 +211,9 @@ const ChatInterface = ({ userId }) => {
       ...prev,
       {
         type: "user",
-        text: `Overall Experience: ${"⭐".repeat(rating)}${"☆".repeat(5 - rating)}`,
+        text: `Overall Experience: ${"⭐".repeat(rating)}${"☆".repeat(
+          5 - rating
+        )}`,
       },
     ]);
 
@@ -213,7 +253,7 @@ const ChatInterface = ({ userId }) => {
     };
 
     return (
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
@@ -226,7 +266,28 @@ const ChatInterface = ({ userId }) => {
     );
   };
 
-  // Animation variants
+  const QuestionLoader = () => (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex justify-start"
+    >
+      <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-4 max-w-xs md:max-w-md shadow-sm w-full">
+        <div className="space-y-3">
+          <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+          <div className="flex justify-between mt-3">
+            {[1, 2, 3, 4, 5].map((_, index) => (
+              <div
+                key={index}
+                className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"
+              ></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
   const messageVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 },
@@ -277,34 +338,41 @@ const ChatInterface = ({ userId }) => {
           ))}
         </AnimatePresence>
 
-        {!chatEnded && currentQuestion && !showExperienceRating && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start"
-          >
-            <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-4 max-w-xs md:max-w-md shadow-sm">
-              <p className="font-medium text-gray-800">{currentQuestion.text}</p>
-              <div className="flex justify-between mt-3">
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <motion.button
-                    key={rating}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleRating(rating)}
-                    className="text-2xl transition-all"
-                  >
-                    {rating <= 3 ? (
-                      <span className="text-amber-400">😞</span>
-                    ) : (
-                      <span className="text-emerald-400">😊</span>
-                    )}
-                  </motion.button>
-                ))}
+        {!chatEnded && isLoadingNextQuestion && <QuestionLoader />}
+
+        {!chatEnded &&
+          currentQuestion &&
+          !showExperienceRating &&
+          !isLoadingNextQuestion && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-start"
+            >
+              <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-4 max-w-xs md:max-w-md shadow-sm">
+                <p className="font-medium text-gray-800">
+                  {currentQuestion.text}
+                </p>
+                <div className="flex justify-between mt-3">
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <motion.button
+                      key={rating}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleRating(rating)}
+                      className="text-2xl transition-all"
+                    >
+                      {rating <= 3 ? (
+                        <span className="text-amber-400">😞</span>
+                      ) : (
+                        <span className="text-emerald-400">😊</span>
+                      )}
+                    </motion.button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          )}
 
         {!chatEnded && showExperienceRating && (
           <motion.div
@@ -313,7 +381,9 @@ const ChatInterface = ({ userId }) => {
             className="flex justify-start"
           >
             <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-4 max-w-xs md:max-w-md shadow-sm">
-              <p className="text-gray-800">How would you rate your overall experience?</p>
+              <p className="text-gray-800">
+                How would you rate your overall experience?
+              </p>
               <div className="flex justify-between mt-3">
                 {[1, 2, 3, 4, 5].map((rating) => (
                   <motion.button
@@ -350,7 +420,9 @@ const ChatInterface = ({ userId }) => {
                   onChange={(e) => setFeedback(e.target.value)}
                   className="flex-1 border-0 rounded-l-lg px-3 py-2 text-gray-800 focus:ring-2 focus:ring-indigo-300"
                   placeholder="Your feedback..."
-                  onKeyPress={(e) => e.key === "Enter" && handleFeedbackSubmit()}
+                  onKeyPress={(e) =>
+                    e.key === "Enter" && handleFeedbackSubmit()
+                  }
                 />
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -415,18 +487,21 @@ const ChatInterface = ({ userId }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {!chatEnded && currentQuestion && !showExperienceRating && (
-        <div className="p-3 bg-white border-t border-gray-100 flex justify-end">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowIssueReport(true)}
-            className="flex items-center text-rose-500 hover:text-rose-600 text-sm font-medium"
-          >
-            <FaExclamationCircle className="mr-2" /> Report Issue
-          </motion.button>
-        </div>
-      )}
+      {!chatEnded &&
+        currentQuestion &&
+        !showExperienceRating &&
+        !isLoadingNextQuestion && (
+          <div className="p-3 bg-white border-t border-gray-100 flex justify-end">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowIssueReport(true)}
+              className="flex items-center text-rose-500 hover:text-rose-600 text-sm font-medium"
+            >
+              <FaExclamationCircle className="mr-2" /> Report Issue
+            </motion.button>
+          </div>
+        )}
     </div>
   );
 };

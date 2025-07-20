@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import authService from "../../services/authService";
 
-// Helper function to get initial auth state
+
 const getInitialAuthState = () => {
   const token = localStorage.getItem("token");
   return {
@@ -19,7 +19,7 @@ export const loginUser = createAsyncThunk(
     try {
       const response = await authService.login(credentials);
       
-      // Store token in localStorage (for now)
+
       if (response.token) {
         localStorage.setItem("token", response.token);
       }
@@ -42,7 +42,7 @@ export const signupUser = createAsyncThunk(
     try {
       const response = await authService.register(userData);
       
-      // Store token in localStorage (for now)
+
       if (response.token) {
         localStorage.setItem("token", response.token);
       }
@@ -66,7 +66,7 @@ export const logoutUser = createAsyncThunk(
       await authService.logout();
     } catch (err) {
       console.error("Logout error:", err);
-      // Even if backend logout fails, we'll still clear frontend state
+
     }
   }
 );
@@ -86,7 +86,7 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Login cases
+
       .addCase(loginUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -102,7 +102,7 @@ const authSlice = createSlice({
         state.error = action.payload;
       })
 
-      // Signup cases
+     
       .addCase(signupUser.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -118,7 +118,7 @@ const authSlice = createSlice({
         state.error = action.payload;
       })
 
-      // Logout case
+
       .addCase(logoutUser.fulfilled, (state) => {
         localStorage.removeItem("token");
         state.user = null;
