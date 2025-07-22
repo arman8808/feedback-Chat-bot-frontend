@@ -16,16 +16,19 @@ const ChatInterface = ({ userId }) => {
   const [showExperienceRating, setShowExperienceRating] = useState(false);
   const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
   const [showThankYouMessage, setShowThankYouMessage] = useState(false);
+  const [feedbackQuestionId, setFeedbackQuestionId] = useState(null);
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const token = localStorage.getItem("token");
 
-  const startNewSession = () => {
-    if (socketRef.current && !socketRef.current.connected) {
+const startNewSession = () => {
+  if (socketRef.current) {
+    if (!socketRef.current.connected) {
       socketRef.current.connect();
     }
 
+    // Reset all state
     setChatEnded(false);
     setCurrentQuestion(null);
     setMessages([]);
@@ -35,10 +38,17 @@ const ChatInterface = ({ userId }) => {
     setShowIssueReport(false);
     setIsLoadingNextQuestion(false);
 
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit("start-session");
-    }
-  };
+    // Add error handling
+    socketRef.current.emit("start-session", (response) => {
+      if (response?.error) {
+        setMessages(prev => [...prev, { 
+          type: "system", 
+          text: `Failed to start session: ${response.error.message}` 
+        }]);
+      }
+    });
+  }
+};
 
   useEffect(() => {
     setSocketStatus("connecting");
@@ -50,6 +60,13 @@ const ChatInterface = ({ userId }) => {
       auth: { token },
     });
 
+    socketRef.current.on("heartbeat-ping", (data) => {
+      socketRef.current.emit("heartbeat-pong", { timestamp: data.timestamp });
+    });
+
+    socketRef.current.on("connection-status", (status) => {
+      console.log("Connection status:", status);
+    });
     // Connection events
     socketRef.current.on("connect", () => {
       setSocketStatus("connected");
@@ -122,10 +139,19 @@ const ChatInterface = ({ userId }) => {
       setShowExperienceRating(false);
     });
 
-    socketRef.current.on("request-feedback", () => {
+    socketRef.current.on("request-feedback", ({ questionId }) => {
+      setFeedbackQuestionId(questionId);
       setShowFeedbackInput(true);
     });
-
+    socketRef.current.on("next-question", (question) => {
+      if (question) {
+        setCurrentQuestion(question);
+        setMessages((prev) => [...prev, { type: "bot", text: question.text }]);
+        setShowFeedbackInput(false);
+        setFeedbackQuestionId(null);
+      }
+      setIsLoadingNextQuestion(false);
+    });
     socketRef.current.on("appreciation", () => {
       setMessages((prev) => [
         ...prev,
@@ -170,41 +196,50 @@ const ChatInterface = ({ userId }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleRating = (rating) => {
+const handleRating = (rating) => {
+  // Don't set isLoadingNextQuestion here - we might need to show feedback first
+  setMessages((prev) => [
+    ...prev,
+    {
+      type: "user",
+      text: `Rating: ${"⭐".repeat(rating)}${"☆".repeat(5 - rating)}`,
+    },
+  ]);
+
+  setFeedback("");
+  setFeedbackQuestionId(null);
+
+  socketRef.current.emit("submit-response", {
+    questionId: currentQuestion._id,
+    rating,
+    feedback: null,
+  });
+
+  if (rating > 2) {
     setIsLoadingNextQuestion(true);
+  }
+};
+
+const handleFeedbackSubmit = () => {
+  if (feedback.trim() && feedbackQuestionId) {
     setMessages((prev) => [
       ...prev,
-      {
-        type: "user",
-        text: `Rating: ${"⭐".repeat(rating)}${"☆".repeat(5 - rating)}`,
-      },
+      { type: "user", text: `Feedback: ${feedback.trim()}` },
     ]);
 
-    socketRef.current.emit("submit-response", {
-      questionId: currentQuestion._id,
-      rating,
-      feedback: null,
+    socketRef.current.emit("submit-additional-feedback", {
+      questionId: feedbackQuestionId,
+      additionalFeedback: feedback.trim(),
     });
-  };
 
-  const handleFeedbackSubmit = () => {
-    if (feedback.trim()) {
-      setIsLoadingNextQuestion(true);
-      setMessages((prev) => [
-        ...prev,
-        { type: "user", text: `Feedback: ${feedback.trim()}` },
-      ]);
+    setFeedback("");
+    setShowFeedbackInput(false);
+    setFeedbackQuestionId(null);
 
-      socketRef.current.emit("submit-response", {
-        questionId: currentQuestion._id,
-        rating: null,
-        feedback: feedback.trim(),
-      });
-
-      setFeedback("");
-      setShowFeedbackInput(false);
-    }
-  };
+    // Set loading state when moving to next question
+    setIsLoadingNextQuestion(true);
+  }
+};
 
   const handleExperienceRating = (rating) => {
     setMessages((prev) => [
@@ -418,7 +453,7 @@ const ChatInterface = ({ userId }) => {
                   type="text"
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  className="flex-1 border-0 rounded-l-lg px-3 py-2 text-gray-800 focus:ring-2 focus:ring-indigo-300"
+                  className="flex-1 border-0 rounded-l-lg px-3 py-2 text-white placeholder-gray-200 bg-indigo-400 focus:ring-2 focus:ring-indigo-300"
                   placeholder="Your feedback..."
                   onKeyPress={(e) =>
                     e.key === "Enter" && handleFeedbackSubmit()
@@ -437,35 +472,35 @@ const ChatInterface = ({ userId }) => {
           </motion.div>
         )}
 
-        {!chatEnded && showIssueReport && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-end"
-          >
-            <div className="bg-rose-500 text-white rounded-2xl rounded-tr-none p-4 max-w-xs md:max-w-md shadow-sm">
-              <p className="mb-3">Describe the issue:</p>
-              <div className="flex">
-                <input
-                  type="text"
-                  value={issueMessage}
-                  onChange={(e) => setIssueMessage(e.target.value)}
-                  className="flex-1 border-0 rounded-l-lg px-3 py-2 text-gray-800 focus:ring-2 focus:ring-rose-300"
-                  placeholder="What's the issue?"
-                  onKeyPress={(e) => e.key === "Enter" && handleIssueReport()}
-                />
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleIssueReport}
-                  className="bg-rose-600 text-white px-4 py-2 rounded-r-lg hover:bg-rose-700 transition-colors"
-                >
-                  <FaPaperPlane />
-                </motion.button>
-              </div>
-            </div>
-          </motion.div>
-        )}
+      {!chatEnded && showIssueReport && (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="flex justify-end"
+  >
+    <div className="bg-rose-500 text-white rounded-2xl rounded-tr-none p-4 max-w-xs md:max-w-md shadow-sm">
+      <p className="mb-3">Describe the issue:</p>
+      <div className="flex">
+        <input
+          type="text"
+          value={issueMessage}
+          onChange={(e) => setIssueMessage(e.target.value)}
+          className="flex-1 border-0 rounded-l-lg px-3 py-2 text-white placeholder-gray-200 bg-rose-400 focus:ring-2 focus:ring-rose-300"
+          placeholder="What's the issue?"
+          onKeyPress={(e) => e.key === "Enter" && handleIssueReport()}
+        />
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleIssueReport}
+          className="bg-rose-600 text-white px-4 py-2 rounded-r-lg hover:bg-rose-700 transition-colors"
+        >
+          <FaPaperPlane />
+        </motion.button>
+      </div>
+    </div>
+  </motion.div>
+)}
 
         {chatEnded && (
           <motion.div
