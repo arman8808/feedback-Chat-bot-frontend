@@ -1,8 +1,7 @@
-// src/pages/Login.jsx
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { loginUser } from "../features/auth/authSlice";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import Cookies from "js-cookie";
 import CryptoJS from "crypto-js";
 
@@ -12,29 +11,43 @@ const SECRET =
 export default function Login({ setIsAuthenticated }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const { error, isAuthenticated } = useSelector((s) => s.auth);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [credentialsFromUrl, setCredentialsFromUrl] = useState(false);
 
   useEffect(() => {
-    const enc = Cookies.get("remember");
-    if (enc) {
-      try {
-        const bytes = CryptoJS.AES.decrypt(enc, SECRET);
-        const { email: e, password: p } = JSON.parse(
-          bytes.toString(CryptoJS.enc.Utf8)
-        );
-        setEmail(e);
-        setPassword(p);
-        setRemember(true);
-      } catch {
-        Cookies.remove("remember");
+    const queryParams = new URLSearchParams(location.search);
+    const urlEmail = queryParams.get("email");
+    const urlPassword = queryParams.get("password");
+    const urlRemember = queryParams.get("remember");
+
+    if (urlEmail && urlPassword) {
+      setEmail(urlEmail);
+      setPassword(urlPassword);
+      setRemember(urlRemember === "true");
+      setCredentialsFromUrl(true);
+    } else {
+      const enc = Cookies.get("remember");
+      if (enc) {
+        try {
+          const bytes = CryptoJS.AES.decrypt(enc, SECRET);
+          const { email: e, password: p } = JSON.parse(
+            bytes.toString(CryptoJS.enc.Utf8)
+          );
+          setEmail(e);
+          setPassword(p);
+          setRemember(true);
+        } catch {
+          Cookies.remove("remember");
+        }
       }
     }
-  }, []);
+  }, [location.search]);
 
   useEffect(() => {
     if (isAuthenticated) navigate("/");
@@ -47,8 +60,13 @@ export default function Login({ setIsAuthenticated }) {
       const response = await dispatch(loginUser({ email, password })).unwrap();
 
       localStorage.setItem("token", response.token);
-
       setIsAuthenticated(true);
+
+      if (remember && !credentialsFromUrl) {
+        const creds = JSON.stringify({ email, password });
+        const encrypted = CryptoJS.AES.encrypt(creds, SECRET).toString();
+        Cookies.set("remember", encrypted, { expires: 30 });
+      }
 
       navigate("/");
     } catch (error) {
